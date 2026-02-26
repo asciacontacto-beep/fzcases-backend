@@ -1,9 +1,3 @@
-import {
-  // ... los que ya tenés
-  getVariantImages,
-  uploadVariantImage,
-  deleteVariantImage,
-} from "../services/supabase";
 import { Router, Request, Response } from "express";
 import {
   getAllProducts,
@@ -15,6 +9,9 @@ import {
   updateVariant,
   deleteVariant,
   uploadProductImage,
+  getVariantImages,
+  uploadVariantImage,
+  deleteVariantImage,
   ProductRow,
 } from "../services/supabase";
 import multer from "multer";
@@ -28,11 +25,14 @@ function formatProduct(p: ProductRow) {
   const variants = (p.variants || []).filter(v => v.active);
   const prices = variants.map(v => v.price).filter(Boolean) as number[];
 
+  const variantWithImage = variants.find(v => (v as any).variant_images?.length > 0);
+  const variantImage = variantWithImage ? (variantWithImage as any).variant_images[0]?.image_url : null;
+
   return {
     id: p.id,
     name: p.name,
     category: p.category,
-    image: p.image_url,
+    image: p.image_url || variantImage || null,
     featured: p.featured,
     variants: variants.map(v => ({
       id: v.id,
@@ -50,19 +50,12 @@ function formatProduct(p: ProductRow) {
 
 // ─── Public Routes ────────────────────────────────────────────────────────────
 
-// GET /products
 router.get("/", async (req: Request, res: Response) => {
   try {
     const products = await getAllProducts();
     let result = products.map(formatProduct);
-
-    if (req.query.category) {
-      result = result.filter(p => p.category === req.query.category);
-    }
-    if (req.query.featured === "true") {
-      result = result.filter(p => p.featured);
-    }
-
+    if (req.query.category) result = result.filter(p => p.category === req.query.category);
+    if (req.query.featured === "true") result = result.filter(p => p.featured);
     res.json({ success: true, count: result.length, data: result });
   } catch (error) {
     console.error(error);
@@ -70,7 +63,6 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-// GET /products/:id
 router.get("/:id", async (req: Request, res: Response) => {
   try {
     const product = await getProductById(req.params.id);
@@ -80,20 +72,17 @@ router.get("/:id", async (req: Request, res: Response) => {
   }
 });
 
-// ─── Admin Routes (protected by middleware in server.ts) ──────────────────────
+// ─── Admin Routes ─────────────────────────────────────────────────────────────
 
-// POST /products
 router.post("/", async (req: Request, res: Response) => {
   try {
     const { variants, ...productData } = req.body;
     const product = await createProduct(productData);
-
     if (variants && Array.isArray(variants)) {
       for (const v of variants) {
         await createVariant({ ...v, product_id: product.id, active: true });
       }
     }
-
     const full = await getProductById(product.id);
     res.status(201).json({ success: true, data: formatProduct(full) });
   } catch (error) {
@@ -102,7 +91,6 @@ router.post("/", async (req: Request, res: Response) => {
   }
 });
 
-// PUT /products/:id
 router.put("/:id", async (req: Request, res: Response) => {
   try {
     const { variants, ...productData } = req.body;
@@ -114,7 +102,6 @@ router.put("/:id", async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /products/:id
 router.delete("/:id", async (req: Request, res: Response) => {
   try {
     await deleteProduct(req.params.id);
@@ -124,14 +111,11 @@ router.delete("/:id", async (req: Request, res: Response) => {
   }
 });
 
-// POST /products/:id/image
 router.post("/:id/image", upload.single("image"), async (req: Request, res: Response) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: "No image provided" });
-
     const url = await uploadProductImage(req.params.id, req.file.buffer, req.file.mimetype);
     await updateProduct(req.params.id, { image_url: url });
-
     res.json({ success: true, url });
   } catch (error) {
     console.error(error);
@@ -139,7 +123,6 @@ router.post("/:id/image", upload.single("image"), async (req: Request, res: Resp
   }
 });
 
-// POST /products/:id/variants
 router.post("/:id/variants", async (req: Request, res: Response) => {
   try {
     const variant = await createVariant({ ...req.body, product_id: req.params.id, active: true });
@@ -149,7 +132,6 @@ router.post("/:id/variants", async (req: Request, res: Response) => {
   }
 });
 
-// PUT /products/:id/variants/:variantId
 router.put("/:id/variants/:variantId", async (req: Request, res: Response) => {
   try {
     const variant = await updateVariant(req.params.variantId, req.body);
@@ -159,7 +141,6 @@ router.put("/:id/variants/:variantId", async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /products/:id/variants/:variantId
 router.delete("/:id/variants/:variantId", async (req: Request, res: Response) => {
   try {
     await deleteVariant(req.params.variantId);
@@ -169,7 +150,6 @@ router.delete("/:id/variants/:variantId", async (req: Request, res: Response) =>
   }
 });
 
-// GET /products/:id/variants/:variantId/images
 router.get("/:id/variants/:variantId/images", async (req: Request, res: Response) => {
   try {
     const images = await getVariantImages(req.params.variantId);
@@ -179,7 +159,6 @@ router.get("/:id/variants/:variantId/images", async (req: Request, res: Response
   }
 });
 
-// POST /products/:id/variants/:variantId/images
 router.post("/:id/variants/:variantId/images", upload.single("image"), async (req: Request, res: Response) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: "No image provided" });
@@ -191,7 +170,6 @@ router.post("/:id/variants/:variantId/images", upload.single("image"), async (re
   }
 });
 
-// DELETE /products/:id/variants/:variantId/images/:imageId
 router.delete("/:id/variants/:variantId/images/:imageId", async (req: Request, res: Response) => {
   try {
     await deleteVariantImage(req.params.imageId);

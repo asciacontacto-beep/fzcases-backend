@@ -17,6 +17,7 @@ export interface VariantRow {
   price?: number;
   color?: string;
   active: boolean;
+  variant_images?: { id: string; image_url: string }[];
 }
 
 export interface ProductRow {
@@ -35,7 +36,7 @@ export interface ProductRow {
 export async function getAllProducts() {
   const { data, error } = await supabase
     .from("products")
-    .select(`*, variants(*)`)
+    .select(`*, variants(*, variant_images(*))`)
     .eq("active", true)
     .order("featured", { ascending: false })
     .order("name");
@@ -47,7 +48,7 @@ export async function getAllProducts() {
 export async function getProductById(id: string) {
   const { data, error } = await supabase
     .from("products")
-    .select(`*, variants(*)`)
+    .select(`*, variants(*, variant_images(*))`)
     .eq("id", id)
     .single();
 
